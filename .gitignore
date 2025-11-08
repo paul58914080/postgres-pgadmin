@@ -1,4 +1,3 @@
 .idea
 *.iml
-pgadmin-secrets.yaml
-postgres-secrets.yaml
+*-secrets.yaml

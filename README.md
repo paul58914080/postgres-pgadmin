@@ -94,6 +94,27 @@ kill <PID>
 pkill -f 'kubectl port-forward'
 ```
 
+```bash
+# 1) Check the postgres pod/service
+kubectl get pods -l app=postgres
+kubectl get svc postgres
+
+# 2) Start a local port-forward (run in a separate terminal)
+#    For the Service:
+kubectl port-forward svc/postgres 5432:5432
+#    Or for the deployment/pod:
+kubectl port-forward deploy/postgres 5432:5432
+
+# 3) Retrieve DB credentials from the Kubernetes secret (decodes base64)
+kubectl get secret postgres-secret -o go-template='{{.data.postgres-root-username | base64decode}}'
+kubectl get secret postgres-secret -o go-template='{{.data.postgres-root-password | base64decode}}'
+# Or both on one line:
+kubectl get secret postgres-secret -o go-template='{{.data.postgres-root-username | base64decode}}:{{.data.postgres-root-password | base64decode}}'
+
+# 4) (Alternative) Use NodePort directly (may work on Docker Desktop):
+#    connect to localhost:30432 instead of port-forwarding
+```
+
 ## Reference
 
 - https://blog.devgenius.io/how-to-deploy-postgresql-db-server-and-pgadmin-in-kubernetes-a-how-to-guide-57952b4e29a8
