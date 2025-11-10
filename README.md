@@ -56,6 +56,16 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/cont
 
 Then access via http://localhost (if your Ingress host is `localhost`). Make sure the ingress controller's class name matches `ingressClassName`.
 
+TO access postgres via cli
+
+```bash
+# simple: first pod matching label
+kubectl exec -it "$(kubectl get pods -l app=postgres -o jsonpath='{.items[0].metadata.name}')" -- /bin/bash
+
+# more robust: first pod in Running state
+kubectl exec -it "$(kubectl get pods -l app=postgres -o jsonpath='{.items[?(@.status.phase=="Running")].metadata.name}' | tr ' ' '\n' | head -n1)" -- /bin/bash
+
+```
 
 ## Useful commands summary
 
@@ -115,6 +125,79 @@ kubectl get secret postgres-secret -o go-template='{{.data.postgres-root-usernam
 #    connect to localhost:30432 instead of port-forwarding
 ```
 
+## Initialize db with a custom database and user
+
+```bash
+
+psql -U root -d mydb -W
+
+postgres=# \conninfo
+You are connected to database "postgres" as user "postgres" via socket in "/var/run/postgresql" at port "5432".
+
+postgres=# create database test_database;
+CREATE DATABASE
+
+postgres=# create role developer_r;
+CREATE ROLE
+
+postgres=# grant all privileges on database test_database to developer_r;
+GRANT
+
+postgres=# \c test_database
+You are now connected to database "test_database" as user "postgres".
+
+test_database=# create schema test_schema;
+CREATE SCHEMA
+
+test_database=# grant all on schema test_schema to developer_r;
+GRANT
+
+test_database=# grant all privileges on all tables in schema test_schema to developer_r;
+GRANT
+
+test_database=# create user test_user password 'password' in group developer_r login;
+CREATE ROLE
+
+test_database=# create table test_schema.test_table (col1 int);
+CREATE TABLE
+
+test_database=# insert into test_schema.test_table values (1);
+INSERT 0 1
+
+test_database=# select col1 from test_schema.test_table;
+
+test_database=# \dg+ (test_user|developer_r)
+                      List of roles
+  Role name  |  Attributes  |   Member of   | Description
+-------------+--------------+---------------+-------------
+ developer_r | Cannot login | {}            |
+ test_user   |              | {developer_r} |
+
+
+test_database=# \dn+ test_schema
+                        List of schemas
+    Name     |  Owner   |    Access privileges    | Description
+-------------+----------+-------------------------+-------------
+ test_schema | postgres | postgres=UC/postgres   +|
+             |          | developer_r=UC/postgres |
+(1 row)
+
+test_database=# \dt+ test_schema.*
+                                          List of relations
+   Schema    |    Name    | Type  |  Owner   | Persistence | Access method |    Size    | Description
+-------------+------------+-------+----------+-------------+---------------+------------+-------------
+ test_schema | test_table | table | postgres | permanent   | heap          | 8192 bytes |
+(1 row)
+
+test_database=# \dp+ test_schema.test_table
+                                  Access privileges
+   Schema    |    Name    | Type  | Access privileges | Column privileges | Policies
+-------------+------------+-------+-------------------+-------------------+----------
+ test_schema | test_table | table |                   |                   |
+(1 row)
+```
+
 ## Reference
 
 - https://blog.devgenius.io/how-to-deploy-postgresql-db-server-and-pgadmin-in-kubernetes-a-how-to-guide-57952b4e29a8
+- https://stackoverflow.com/questions/71352556/creating-role-with-full-access-to-schema-and-assign-it-to-user
