@@ -1,6 +1,6 @@
 # Postgres + pgAdmin Kubernetes Manifests
 
-This repository contains Kubernetes manifests to run a PostgreSQL database and pgAdmin (web UI) locally on a Kubernetes cluster (Docker Desktop, minikube, kind, etc.). The manifests provide deployments, services, a PersistentVolume/Claim for storage, and an Ingress resource for HTTP access.
+This repository contains Kubernetes manifests to run a PostgreSQL database and pgAdmin (web UI) locally on a Kubernetes cluster (Docker Desktop). The manifests provide deployments, services, a PersistentVolume/Claim for storage, and an Ingress resource for HTTP access.
 
 ## Files
 - `postgres-deploy.yaml`  — Deployment, Service, PV and PVC for PostgreSQL.
@@ -38,15 +38,24 @@ kubectl apply -f pgadmin-deploy.yaml
 kubectl get all -n default
 ```
 
-Accessing pgAdmin
-- NodePort (should work on Docker Desktop): open http://localhost:30200
 
-- Port-forward (reliable regardless of cluster networking):
+4. Access postgres via cli
 
 ```bash
-kubectl port-forward svc/pgadmin 8080:80 -n default
-# then open http://localhost:8080
+# simple: first pod matching label
+kubectl exec -it "$(kubectl get pods -l app=postgres -o jsonpath='{.items[0].metadata.name}')" -- /bin/bash
+
+# more robust: first pod in Running state
+kubectl exec -it "$(kubectl get pods -l app=postgres -o jsonpath='{.items[?(@.status.phase=="Running")].metadata.name}' | tr ' ' '\n' | head -n1)" -- /bin/bash
 ```
+
+5. Accessing pgAdmin
+- NodePort (should work on Docker Desktop): open http://localhost:30200
+- Port-forward (reliable regardless of cluster networking):
+  ```bash
+  kubectl port-forward svc/pgadmin 8080:80 -n default
+  # then open http://localhost:8080
+  ```
 
 - Ingress: If you prefer to use Ingress (the manifest uses `spec.ingressClassName: "nginx"`) you must have an ingress controller running. Example to install ingress-nginx:
 
@@ -56,18 +65,7 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/cont
 
 Then access via http://localhost (if your Ingress host is `localhost`). Make sure the ingress controller's class name matches `ingressClassName`.
 
-TO access postgres via cli
-
-```bash
-# simple: first pod matching label
-kubectl exec -it "$(kubectl get pods -l app=postgres -o jsonpath='{.items[0].metadata.name}')" -- /bin/bash
-
-# more robust: first pod in Running state
-kubectl exec -it "$(kubectl get pods -l app=postgres -o jsonpath='{.items[?(@.status.phase=="Running")].metadata.name}' | tr ' ' '\n' | head -n1)" -- /bin/bash
-
-```
-
-## Useful commands summary
+## Useful k8s commands summary
 
 ```bash
 # apply manifests
@@ -102,9 +100,7 @@ ps aux | grep '[k]ubectl port-forward'
 kill <PID>
 # or kill all port-forwards (careful)
 pkill -f 'kubectl port-forward'
-```
 
-```bash
 # 1) Check the postgres pod/service
 kubectl get pods -l app=postgres
 kubectl get svc postgres
@@ -127,75 +123,84 @@ kubectl get secret postgres-secret -o go-template='{{.data.postgres-root-usernam
 
 ## Initialize db with a custom database and user
 
+Connect to your postgres instance
+
 ```bash
-
-psql -U root -d mydb -W
-
-postgres=# \conninfo
-You are connected to database "postgres" as user "postgres" via socket in "/var/run/postgresql" at port "5432".
-
-postgres=# create database test_database;
-CREATE DATABASE
-
-postgres=# create role developer_r;
-CREATE ROLE
-
-postgres=# grant all privileges on database test_database to developer_r;
-GRANT
-
-postgres=# \c test_database
-You are now connected to database "test_database" as user "postgres".
-
-test_database=# create schema test_schema;
-CREATE SCHEMA
-
-test_database=# grant all on schema test_schema to developer_r;
-GRANT
-
-test_database=# grant all privileges on all tables in schema test_schema to developer_r;
-GRANT
-
-test_database=# create user test_user password 'password' in group developer_r login;
-CREATE ROLE
-
-test_database=# create table test_schema.test_table (col1 int);
-CREATE TABLE
-
-test_database=# insert into test_schema.test_table values (1);
-INSERT 0 1
-
-test_database=# select col1 from test_schema.test_table;
-
-test_database=# \dg+ (test_user|developer_r)
-                      List of roles
-  Role name  |  Attributes  |   Member of   | Description
--------------+--------------+---------------+-------------
- developer_r | Cannot login | {}            |
- test_user   |              | {developer_r} |
-
-
-test_database=# \dn+ test_schema
-                        List of schemas
-    Name     |  Owner   |    Access privileges    | Description
--------------+----------+-------------------------+-------------
- test_schema | postgres | postgres=UC/postgres   +|
-             |          | developer_r=UC/postgres |
-(1 row)
-
-test_database=# \dt+ test_schema.*
-                                          List of relations
-   Schema    |    Name    | Type  |  Owner   | Persistence | Access method |    Size    | Description
--------------+------------+-------+----------+-------------+---------------+------------+-------------
- test_schema | test_table | table | postgres | permanent   | heap          | 8192 bytes |
-(1 row)
-
-test_database=# \dp+ test_schema.test_table
-                                  Access privileges
-   Schema    |    Name    | Type  | Access privileges | Column privileges | Policies
--------------+------------+-------+-------------------+-------------------+----------
- test_schema | test_table | table |                   |                   |
-(1 row)
+kubectl exec -it deployment/postgres -- env PGPASSWORD=$(kubectl get secret postgres-secret -o jsonpath='{.data.postgres-root-password}' | base64 --decode) psql -U $(kubectl get secret postgres-secret -o jsonpath='{.data.postgres-root-username}' | base64 --decode) -d $(kubectl get configmap postgres-configmap -o jsonpath='{.data.postgres-dbname}')
 ```
+
+Create database
+```bash
+create database batch_database;
+```
+
+Create role
+```bash
+create role batch_developer;
+```
+
+Grant privileges for the role created to the database
+```bash
+grant all privileges on database batch_database to batch_developer;
+```
+
+Connect to the database
+```bash
+\c batch_database
+``` 
+
+Create schema
+```bash
+create schema batch_schema;
+```
+
+Grant privileges for the role created to the schema
+```bash
+grant all on schema batch_schema to batch_developer;
+```
+
+Grant privileges to all the tables
+```bash
+grant all privileges on all tables in schema batch_schema to batch_developer;
+```
+
+Create user
+```bash
+create user batch_user password 'password' in group batch_developer login;
+```
+Enlist database
+```bash
+\l+
+```
+
+Enlist role
+```bash
+\dg+
+```
+
+Enlist schema
+```bash
+\dn+ batch_schema
+```
+
+Enlist tables
+```bash
+\dt+ batch_schema.*
+```
+
+Clear console
+```bash
+\! clear
+```
+
+## Configure IntelliJ Data Source
+
+![intellij-datasource-config](docs/img/intellij-datasource-config.png)
+
+> [!NOTE]
+> You can use the NodePort service or port-forwarding to connect IntelliJ to the Postgres instance.
+>  - NodePort: `localhost:30432`
+>  - Port-forward: `localhost:5432` with the command: `kubectl port-forward svc/postgres 5432:5432`
 
 ## Reference
 
