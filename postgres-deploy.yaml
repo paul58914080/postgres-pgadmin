@@ -25,7 +25,7 @@ spec:
       containers:
         - name: postgres
           image: postgres:latest
-          imagePullPolicy: "IfNotPresent"
+          imagePullPolicy: IfNotPresent
           env:
             - name: POSTGRES_USER
               valueFrom:
@@ -43,39 +43,24 @@ spec:
                   name: postgres-configmap
                   key: postgres-dbname
           volumeMounts:
-            - mountPath: /var/lib/postgresql
-              name: postgredb
+            - name: postgredb
+              mountPath: /var/lib/postgresql
       volumes:
         - name: postgredb
           persistentVolumeClaim:
             claimName: postgres-pvc
+
 ---
-kind: PersistentVolume
 apiVersion: v1
-metadata:
-  name: postgres-pv
-  labels:
-    type: local
-    app: postgres
-spec:
-  storageClassName: manual
-  capacity:
-    storage: 2Gi
-  accessModes:
-    - ReadWriteMany
-  hostPath:
-    path: "/mnt/data"
----
 kind: PersistentVolumeClaim
-apiVersion: v1
 metadata:
   name: postgres-pvc
   labels:
     app: postgres
 spec:
-  storageClassName: manual
+  storageClassName: hostpath   # dynamic PV → works on Minikube + Docker Desktop
   accessModes:
-    - ReadWriteMany
+    - ReadWriteOnce
   resources:
     requests:
       storage: 2Gi
@@ -87,10 +72,10 @@ metadata:
   labels:
     app: postgres
 spec:
+  type: NodePort
   ports:
     - name: postgres
       port: 5432
       nodePort: 30432
-  type: NodePort
   selector:
     app: postgres
